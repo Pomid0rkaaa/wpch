@@ -1,0 +1,49 @@
+# Build results
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio cache/options
+.vs/
+
+# Rider / ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# NuGet
+packages/
+*.nupkg
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Publish output
+publish/
+
+# Test results
+TestResults/
+
+# Azure
+*.azurePubxml
+
+# Generated files
+Generated_Code/
+
+# Backup files
+*.bak
+*.tmp
+
+# Visual Studio Code
+.vscode/
+
+# JetBrains Rider
+.idea/
