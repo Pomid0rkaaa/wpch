@@ -1,9 +1,4 @@
 ﻿using System.Runtime.InteropServices;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
-[JsonSerializable(typeof(string[]))]
-internal partial class WallpaperJsonContext : JsonSerializerContext { }
 
 static class WallpaperChanger
 {
@@ -27,37 +22,23 @@ class Program
 
     private static string[] wallpapers = Array.Empty<string>();
 
-    [DllImport("kernel32.dll")]
-    static extern IntPtr GetConsoleWindow();
-
-    [DllImport("user32.dll")]
-    static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    const int SW_HIDE = 0;
-
     static async Task<int> Main(string[] args)
     {
-        string jsonPath = Path.Combine(AppContext.BaseDirectory, "wallpapers.json");
-        if (!File.Exists(jsonPath))
+        string listPath = Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
+        if (!File.Exists(listPath))
         {
-            Console.Error.WriteLine("wallpapers.json was not found");
+            Console.Error.WriteLine("wallpapers.txt was not found");
             return 1;
         }
 
-        try
+        wallpapers = (await File.ReadAllLinesAsync(listPath))
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(x => !x.StartsWith('#'))
+            .ToArray();
+        if (wallpapers.Length == 0)
         {
-            string json = await File.ReadAllTextAsync(jsonPath);
-            wallpapers = JsonSerializer.Deserialize(json, WallpaperJsonContext.Default.StringArray) ?? Array.Empty<string>();
-
-            if (wallpapers.Length == 0)
-            {
-                Console.Error.WriteLine("wallpapers.json is empty or invalid");
-                return 1;
-            }
-        }
-        catch (JsonException)
-        {
-            Console.Error.WriteLine("wallpapers.json contains invalid JSON");
+            Console.Error.WriteLine("wallpapers.txt is empty");
             return 1;
         }
 
@@ -97,11 +78,6 @@ class Program
         {
             return await RunOnce();
         }
-        catch (JsonException)
-        {
-            Console.Error.WriteLine("wallpapers.json contains invalid JSON");
-            return 1;
-        }
         catch (UnauthorizedAccessException)
         {
             Console.Error.WriteLine("Permission denied while accessing files");
@@ -123,7 +99,13 @@ class Program
     {
         string selected = wallpapers[Random.Shared.Next(wallpapers.Length)];
 
-        string fileName = Path.GetFileName(new Uri(selected).LocalPath);
+        if (!Uri.TryCreate(selected, UriKind.Absolute, out var uri))
+        {
+            Console.Error.WriteLine($"Invalid URL: {selected}");
+            return 1;
+        }
+
+        string fileName = Path.GetFileName(uri.LocalPath);
         string extension = Path.GetExtension(fileName).ToLowerInvariant();
 
         if (extension is not ".jpg" and not ".jpeg" and not ".png" and not ".bmp")
@@ -143,10 +125,16 @@ class Program
         }
 
         string wallpaperPath = Path.Combine(AppContext.BaseDirectory, $"wallpaper{extension}");
-        using var stream = await Http.GetStreamAsync(selected);
-        using var fileStream = File.Create(wallpaperPath);
-        await stream.CopyToAsync(fileStream);
-        fileStream.Close();
+        await using (var stream = await response.Content.ReadAsStreamAsync())
+        await using (var fileStream = new FileStream(
+            wallpaperPath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None))
+        {
+            await stream.CopyToAsync(fileStream);
+            await fileStream.FlushAsync();
+        }
 
         if (!WallpaperChanger.SetWallpaper(wallpaperPath))
         {
@@ -155,8 +143,6 @@ class Program
         }
 
         Console.WriteLine($"Wallpaper set: {selected}");
-        fileStream.Dispose();
-        GC.Collect();
         return 0;
     }
 
@@ -180,6 +166,9 @@ class Program
         char unit = input[^1];
         if (!int.TryParse(input[..^1], out int value))
             throw new ArgumentException("Invalid interval value");
+
+        if (value <= 0)
+            throw new ArgumentException("Interval must be greater than zero");
 
         return unit switch
         {
