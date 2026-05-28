@@ -114,8 +114,7 @@ class Program
             return 1;
         }
 
-        using var response = await Http.GetAsync(selected, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
+        using var response = await GetRetry(selected);
 
         var contentType = response.Content.Headers.ContentType?.MediaType;
         if (contentType is not ("image/jpeg" or "image/png" or "image/bmp"))
@@ -144,6 +143,49 @@ class Program
 
         Console.WriteLine($"Wallpaper set: {selected}");
         return 0;
+    }
+
+    static async Task<HttpResponseMessage> GetRetry(string url, int retries = 5)
+    {
+        Exception? lastException = null;
+
+        for (int attempt = 1; attempt <= retries; attempt++)
+        {
+            try
+            {
+                var response = await Http.GetAsync(
+                    url,
+                    HttpCompletionOption.ResponseHeadersRead
+                );
+
+                if ((int)response.StatusCode >= 500)
+                {
+                    response.Dispose();
+
+                    if (attempt < retries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
+                        continue;
+                    }
+                }
+
+                response.EnsureSuccessStatusCode();
+                return response;
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or TaskCanceledException)
+            {
+                lastException = ex;
+
+                if (attempt < retries)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
+                    continue;
+                }
+            }
+        }
+
+        throw lastException ?? new Exception("Download failed");
     }
 
     static TimeSpan? ParseInterval(string[] args)
