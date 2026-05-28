@@ -19,27 +19,71 @@ static class WallpaperChanger
     private const int SPIF_UPDATEINIFILE = 0x01;
     private const int SPIF_SENDWININICHANGE = 0x02;
 
-    public static void SetWallpaper(string path) =>
-        SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE);
+    public static bool SetWallpaper(string path) =>
+        SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE) != 0;
 }
 
 class Program
 {
-    static async Task Main()
+    private static readonly HttpClient Http = new()
     {
-        string jsonPath = Path.Combine(AppContext.BaseDirectory, "wallpapers.json");
-        string json = await File.ReadAllTextAsync(jsonPath);
+        Timeout = TimeSpan.FromSeconds(15)
+    };
 
-        string[]? wallpapers = JsonSerializer.Deserialize(json, WallpaperJsonContext.Default.StringArray);
-        if (wallpapers is not { Length: > 0 }) return;
-        string selected = wallpapers[Random.Shared.Next(wallpapers.Length)];
+    static async Task<int> Main()
+    {
+        try 
+        {
+            string jsonPath = Path.Combine(AppContext.BaseDirectory, "wallpapers.json");
+            if (!File.Exists(jsonPath))
+            {
+                Console.Error.WriteLine("wallpapers.json was not found");
+                return 1;
+            }
 
-        using HttpClient client = new();
-        byte[] fileBytes = await client.GetByteArrayAsync(selected);
+            string json = await File.ReadAllTextAsync(jsonPath);
+            string[]? wallpapers = JsonSerializer.Deserialize(json, WallpaperJsonContext.Default.StringArray);
+            if (wallpapers is not { Length: > 0 })
+            {
+                Console.Error.WriteLine("wallpapers.json is empty or invalid");
+                return 1;
+            }
 
-        string wallpaperPath = Path.Combine(AppContext.BaseDirectory, "wallpaper.jpg");
-        await File.WriteAllBytesAsync(wallpaperPath, fileBytes);
-        
-        WallpaperChanger.SetWallpaper(wallpaperPath);
+            string selected = wallpapers[Random.Shared.Next(wallpapers.Length)];
+            byte[] fileBytes;
+            try
+            {
+                fileBytes = await Http.GetByteArrayAsync(selected);
+            }
+            catch (HttpRequestException)
+            {
+                Console.Error.WriteLine("Failed to download wallpaper. Check your internet connection or URL");
+                return 1;
+            }
+            string wallpaperPath = Path.Combine(AppContext.BaseDirectory, "wallpaper.jpg");
+            await File.WriteAllBytesAsync(wallpaperPath, fileBytes);
+            
+            if (!WallpaperChanger.SetWallpaper(wallpaperPath))
+            {
+                Console.Error.WriteLine("Failed to set wallpaper");
+                return 1;
+            }
+            return 0;
+        }
+        catch (JsonException)
+        {
+            Console.Error.WriteLine("wallpapers.json contains invalid JSON");
+            return 1;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine("Permission denied while accessing files");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Unexpected error: {ex.Message}");
+            return 1;
+        }
     }
 }
