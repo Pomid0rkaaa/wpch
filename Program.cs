@@ -20,7 +20,7 @@ class Program
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    private static string[] wallpapers = Array.Empty<string>();
+    private static string[] wallpapers = [];
 
     static async Task<int> Main(string[] args)
     {
@@ -31,11 +31,9 @@ class Program
             return 1;
         }
 
-        wallpapers = (await File.ReadAllLinesAsync(listPath))
+        wallpapers = [.. (await File.ReadAllLinesAsync(listPath))
             .Select(x => x.Trim())
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Where(x => !x.StartsWith('#'))
-            .ToArray();
+            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'))];
         if (wallpapers.Length == 0)
         {
             Console.Error.WriteLine("wallpapers.txt is empty");
@@ -117,7 +115,7 @@ class Program
         using var response = await GetRetry(selected);
 
         var contentType = response.Content.Headers.ContentType?.MediaType;
-        if (contentType is not ("image/jpeg" or "image/png" or "image/bmp"))
+        if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/bmp"))
         {
             Console.Error.WriteLine($"Unsupported wallpaper MIME type: {contentType}");
             return 1;
@@ -169,7 +167,12 @@ class Program
                     }
                 }
 
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    var status = response.StatusCode;
+                    response.Dispose();
+                    throw new HttpRequestException($"HTTP {(int)status}");
+                }
                 return response;
             }
             catch (Exception ex) when (
