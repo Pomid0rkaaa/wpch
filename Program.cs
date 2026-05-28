@@ -50,17 +50,32 @@ class Program
             }
 
             string selected = wallpapers[Random.Shared.Next(wallpapers.Length)];
-            byte[] fileBytes;
-            try
+
+            string fileName = Path.GetFileName(new Uri(selected).LocalPath);
+            string extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+            if (extension is not ".jpg" and not ".jpeg" and not ".png" and not ".bmp")
             {
-                fileBytes = await Http.GetByteArrayAsync(selected);
-            }
-            catch (HttpRequestException)
-            {
-                Console.Error.WriteLine("Failed to download wallpaper. Check your internet connection or URL");
+                Console.Error.WriteLine($"Unsupported wallpaper format: {extension}");
                 return 1;
             }
-            string wallpaperPath = Path.Combine(AppContext.BaseDirectory, "wallpaper.jpg");
+
+            var response = await Http.GetAsync(selected, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.Error.WriteLine($"Failed to fecth wallpaper: {response.StatusCode}");
+                return 1;
+            }
+
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            if (contentType is not ("image/jpeg" or "image/png" or "image/bmp"))
+            {
+                Console.Error.WriteLine($"Unsupported wallpaper MIME type: {contentType}");
+                return 1;
+            }
+
+            byte[] fileBytes = await response.Content.ReadAsByteArrayAsync();
+            string wallpaperPath = Path.Combine(AppContext.BaseDirectory, $"wallpaper{extension}");
             await File.WriteAllBytesAsync(wallpaperPath, fileBytes);
             
             if (!WallpaperChanger.SetWallpaper(wallpaperPath))
