@@ -20,54 +20,149 @@ class Program
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    private static string[] wallpapers = [];
+    private static string[] _wallpapers = [];
+    private static string? _listPath;
+    private static string? _filter;
+    private static TimeSpan? _interval;
 
     static async Task<int> Main(string[] args)
     {
-        string listPath = Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
-        if (!File.Exists(listPath))
+        if (!ParseArgs(args))
         {
-            Console.Error.WriteLine("wallpapers.txt was not found");
+            Console.Error.WriteLine("Invalid arguments.");
+            PrintHelp();
             return 1;
         }
 
-        wallpapers = [.. (await File.ReadAllLinesAsync(listPath))
+        _listPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
+        if (!File.Exists(_listPath))
+        {
+            Console.Error.WriteLine($"{_listPath} was not found");
+            return 1;
+        }
+
+        var query = (await File.ReadAllLinesAsync(_listPath))
             .Select(x => x.Trim())
-            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'))];
-        if (wallpapers.Length == 0)
+            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'));
+
+        if (!string.IsNullOrEmpty(_filter))
         {
-            Console.Error.WriteLine("wallpapers.txt is empty");
+            query = query.Where(x => x.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _wallpapers = [.. query];
+
+        if (_wallpapers.Length == 0)
+        {
+            Console.Error.WriteLine($"{_listPath} is empty");
             return 1;
         }
 
-        TimeSpan? interval = null;
-        try
-        {
-            interval = ParseInterval(args);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Invalid interval argument: {ex.Message}");
-            return 1;
-        }
-
-        if (interval is null)
+        if (_interval is null)
         {
             return await RunOnceErrors();
         }
 
-        var next = DateTime.UtcNow + interval.Value;
+        var next = DateTime.UtcNow + _interval.Value;
         while (true)
         {
             await RunOnceErrors();
 
-            next += interval.Value;
+            next += _interval.Value;
             var delay = next - DateTime.UtcNow;
             if (delay > TimeSpan.Zero)
                 await Task.Delay(delay);
             else
                 next = DateTime.UtcNow;
         }
+    }
+
+    static bool ParseArgs(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--help":
+                case "-h":
+                    PrintHelp();
+                    Environment.Exit(0);
+                    break;
+                case "--interval":
+                case "-i":
+                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
+                    {
+                        Console.Error.WriteLine("Missing value for interval argument.");
+                        return false;
+                    }
+                    if (_interval is not null)
+                    {
+                        Console.Error.WriteLine("Interval specified more than once.");
+                        return false;
+                    }
+
+                    try
+                    {
+                        _interval = ParseTime(args[++i]);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Invalid interval argument: {ex.Message}");
+                        return false;
+                    }
+                    break;
+
+                case "--list":
+                case "-l":
+                    if (_listPath is not null)
+                    {
+                        Console.Error.WriteLine("List specified more than once.");
+                        return false;
+                    }
+                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
+                    {
+                        Console.Error.WriteLine("Missing value for list argument.");
+                        return false;
+                    }
+                    _listPath = args[++i];
+                    break;
+                case "--has":
+                    if (_filter is not null)
+                    {
+                        Console.Error.WriteLine("Filter specified more than once.");
+                        return false;
+                    }
+                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
+                    {
+                        Console.Error.WriteLine("Missing value for filter argument.");
+                        return false;
+                    }
+                    _filter = args[++i];
+                    break;
+                default:
+                    Console.Error.WriteLine($"Unknown argument: {args[i]}");
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    static void PrintHelp()
+    {
+        Console.WriteLine("""
+Usage:
+  wpch [options]
+
+Options:
+  -l, --list <path>     Path to wallpapers list file
+  -i, --interval <time> Interval (e.g. 10s, 5m, 1h)
+      --has <text>      Filter wallpapers containing text
+  -h, --help            Show help
+
+Examples:
+    wpch -l wallpapers.txt -i 10m
+    wpch --has cat --interval 5m
+""");
     }
 
     static async Task<int> RunOnceErrors()
@@ -95,20 +190,11 @@ class Program
 
     static async Task<int> RunOnce()
     {
-        string selected = wallpapers[Random.Shared.Next(wallpapers.Length)];
+        string selected = _wallpapers[Random.Shared.Next(_wallpapers.Length)];
 
-        if (!Uri.TryCreate(selected, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(selected, UriKind.Absolute, out _))
         {
             Console.Error.WriteLine($"Invalid URL: {selected}");
-            return 1;
-        }
-
-        string fileName = Path.GetFileName(uri.LocalPath);
-        string extension = Path.GetExtension(fileName).ToLowerInvariant();
-
-        if (extension is not ".jpg" and not ".jpeg" and not ".png" and not ".bmp")
-        {
-            Console.Error.WriteLine($"Unsupported wallpaper format: {extension}");
             return 1;
         }
 
@@ -120,6 +206,15 @@ class Program
             Console.Error.WriteLine($"Unsupported wallpaper MIME type: {contentType}");
             return 1;
         }
+
+        string extension = contentType switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/jpg" => ".jpg",
+            "image/png" => ".png",
+            "image/bmp" => ".bmp",
+            _ => throw new InvalidOperationException($"Unsupported MIME type: {contentType}")
+        };
 
         string wallpaperPath = Path.Combine(AppContext.BaseDirectory, $"wallpaper{extension}");
         await using (var stream = await response.Content.ReadAsStreamAsync())
@@ -189,18 +284,6 @@ class Program
         }
 
         throw lastException ?? new Exception("Download failed");
-    }
-
-    static TimeSpan? ParseInterval(string[] args)
-    {
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (args[i] == "--interval" && i + 1 < args.Length)
-            {
-                return ParseTime(args[i + 1]);
-            }
-        }
-        return null;
     }
 
     static TimeSpan ParseTime(string input)
