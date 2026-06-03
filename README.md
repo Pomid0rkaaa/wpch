@@ -48,6 +48,12 @@ wpch.exe -l nature.txt
 wpch.exe --has cat
 ```
 
+### Image right away
+
+```powershell
+wpch.exe --img https://example.com/wallpaper.jpg
+```
+
 ### Combine options
 
 ```powershell
@@ -62,6 +68,7 @@ wpch.exe --list wallpapers.txt --has nature --interval 5m
 | -i, --interval &lt;time&gt; | Change interval (`10s`, `5m`, `1h`)            |
 | --has &lt;text&gt;          | Filter URLs containing text (case-insensitive) |
 | -h, --help                  | Show help                                      |
+| --img                       | Set wallpaper from a specific URL              |
 
 ## Configuration
 

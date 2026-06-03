@@ -23,6 +23,7 @@ class Program
     private static string[] _wallpapers = [];
     private static string? _listPath;
     private static string? _filter;
+    private static string? _imgURL;
     private static TimeSpan? _interval;
 
     static async Task<int> Main(string[] args)
@@ -32,6 +33,10 @@ class Program
             Console.Error.WriteLine("Invalid arguments.");
             PrintHelp();
             return 1;
+        }
+        if (_imgURL is not null)
+        {
+            return await RunOnceErrors();
         }
 
         _listPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
@@ -83,6 +88,19 @@ class Program
         {
             switch (args[i])
             {
+                case "--img":
+                    if (_imgURL is not null)
+                    {
+                        Console.Error.WriteLine("Image specified more than once.");
+                        return false;
+                    }
+                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
+                    {
+                        Console.Error.WriteLine("Missing value for picture argument.");
+                        return false;
+                    }
+                    _imgURL = args[++i];
+                    break;
                 case "--help":
                 case "-h":
                     PrintHelp();
@@ -158,6 +176,7 @@ Options:
   -i, --interval <time> Interval (e.g. 10s, 5m, 1h)
       --has <text>      Filter wallpapers containing text
   -h, --help            Show help
+      --img <url>       Set wallpaper from a specific URL
 
 Examples:
     wpch -l wallpapers.txt -i 10m
@@ -190,7 +209,7 @@ Examples:
 
     static async Task<int> RunOnce()
     {
-        string selected = _wallpapers[Random.Shared.Next(_wallpapers.Length)];
+        string selected = _imgURL ?? _wallpapers[Random.Shared.Next(_wallpapers.Length)];
 
         if (!Uri.TryCreate(selected, UriKind.Absolute, out _))
         {
@@ -233,8 +252,6 @@ Examples:
             Console.Error.WriteLine("Failed to set wallpaper");
             return 1;
         }
-
-        Console.WriteLine($"Wallpaper set: {selected}");
         return 0;
     }
 
