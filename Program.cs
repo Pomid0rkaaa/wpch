@@ -22,6 +22,8 @@ class Program
 
     private static bool _verbose;
     private static bool _showTitle;
+    private static bool _dryRun;
+    private static bool _countOnly;
     private static string? _listPath;
     private static string? _filter;
     private static string? _imgURL;
@@ -71,6 +73,12 @@ class Program
             return 1;
         }
 
+        if (_countOnly)
+        {
+            Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
+            return 0;
+        }
+
         if (_interval is null)
         {
             return await RunOnceErrors();
@@ -105,6 +113,12 @@ class Program
                     case "--verbose":
                     case "-v":
                         _verbose = true;
+                        break;
+                    case "--dry-run":
+                        _dryRun = true;
+                        break;
+                    case "--count":
+                        _countOnly = true;
                         break;
                     case "--help":
                     case "-h":
@@ -195,8 +209,10 @@ Options:
   -v, --verbose          Show download and selection details
   -t, --title            Print selected wallpaper name
   -h, --help             Show help
+  -c, --count            Show number of wallpapers matching filter
+      --dry-run          Show which wallpaper would be selected without downloading
       --img <url>        Set wallpaper from a specific URL
-      --version          Show program version
+      --version          Print program version
 
 Examples:
   wpch -l wallpapers.txt -i 10m
@@ -230,7 +246,19 @@ Examples:
     static async Task<int> RunOnce()
     {
         string selected = _imgURL ?? _wallpapers[Random.Shared.Next(_wallpapers.Length)];
+
+        if (_dryRun)
+        {
+            Console.WriteLine($"[Dry Run] Selected wallpaper: {selected}");
+            if (_showTitle)
+            {
+                Console.WriteLine(Path.GetFileNameWithoutExtension(new Uri(selected).AbsolutePath));
+            }
+            return 0;
+        }
+
         Log($"Selected wallpaper: {selected}");
+        
         if (!Uri.TryCreate(selected, UriKind.Absolute, out _))
         {
             Console.Error.WriteLine($"Invalid URL: {selected}");
