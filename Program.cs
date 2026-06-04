@@ -20,11 +20,19 @@ class Program
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    private static string[] _wallpapers = [];
+    private static bool _verbose;
+    private static bool _showTitle;
     private static string? _listPath;
     private static string? _filter;
     private static string? _imgURL;
+    private static string[] _wallpapers = [];
     private static TimeSpan? _interval;
+
+    static void Log(string message)
+    {
+        if (_verbose)
+            Console.WriteLine(message);
+    }
 
     static async Task<int> Main(string[] args)
     {
@@ -84,85 +92,94 @@ class Program
 
     static bool ParseArgs(string[] args)
     {
-        for (int i = 0; i < args.Length; i++)
+        try
         {
-            switch (args[i])
+            for (int i = 0; i < args.Length; i++)
             {
-                case "--img":
-                    if (_imgURL is not null)
-                    {
-                        Console.Error.WriteLine("Image specified more than once.");
-                        return false;
-                    }
-                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
-                    {
-                        Console.Error.WriteLine("Missing value for picture argument.");
-                        return false;
-                    }
-                    _imgURL = args[++i];
-                    break;
-                case "--help":
-                case "-h":
-                    PrintHelp();
-                    Environment.Exit(0);
-                    break;
-                case "--interval":
-                case "-i":
-                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
-                    {
-                        Console.Error.WriteLine("Missing value for interval argument.");
-                        return false;
-                    }
-                    if (_interval is not null)
-                    {
-                        Console.Error.WriteLine("Interval specified more than once.");
-                        return false;
-                    }
+                switch (args[i])
+                {
+                    case "--title":
+                    case "-t":
+                        _showTitle = true;
+                        break;
+                    case "--verbose":
+                    case "-v":
+                        _verbose = true;
+                        break;
+                    case "--help":
+                    case "-h":
+                        PrintHelp();
+                        Environment.Exit(0);
+                        break;
+                    case "--version":
+                        Console.WriteLine("wpch v1.2");
+                        Environment.Exit(0);
+                        break;
+                    case "--img":
+                        if (_imgURL is not null)
+                        {
+                            Console.Error.WriteLine("Image specified more than once.");
+                            return false;
+                        }
+                        _imgURL = RequireValue(args, ref i, "image");
+                        break;
+                    case "--interval":
+                    case "-i":
+                        if (_interval is not null)
+                        {
+                            Console.Error.WriteLine("Interval specified more than once.");
+                            return false;
+                        }
 
-                    try
-                    {
-                        _interval = ParseTime(args[++i]);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"Invalid interval argument: {ex.Message}");
-                        return false;
-                    }
-                    break;
+                        try
+                        {
+                            _interval = ParseTime(RequireValue(args, ref i, "interval"));
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Invalid interval argument: {ex.Message}");
+                            return false;
+                        }
+                        break;
 
-                case "--list":
-                case "-l":
-                    if (_listPath is not null)
-                    {
-                        Console.Error.WriteLine("List specified more than once.");
+                    case "--list":
+                    case "-l":
+                        if (_listPath is not null)
+                        {
+                            Console.Error.WriteLine("List specified more than once.");
+                            return false;
+                        }
+                        _listPath = RequireValue(args, ref i, "list");
+                        break;
+                    case "--has":
+                    case "-f":
+                        if (_filter is not null)
+                        {
+                            Console.Error.WriteLine("Filter specified more than once.");
+                            return false;
+                        }
+                        _filter = RequireValue(args, ref i, "filter");
+                        break;
+                    default:
+                        Console.Error.WriteLine($"Unknown argument: {args[i]}");
                         return false;
-                    }
-                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
-                    {
-                        Console.Error.WriteLine("Missing value for list argument.");
-                        return false;
-                    }
-                    _listPath = args[++i];
-                    break;
-                case "--has":
-                    if (_filter is not null)
-                    {
-                        Console.Error.WriteLine("Filter specified more than once.");
-                        return false;
-                    }
-                    if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
-                    {
-                        Console.Error.WriteLine("Missing value for filter argument.");
-                        return false;
-                    }
-                    _filter = args[++i];
-                    break;
-                default:
-                    Console.Error.WriteLine($"Unknown argument: {args[i]}");
-                    return false;
+                }
             }
         }
+        catch (ArgumentException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return false;
+        }
         return true;
+    }
+
+    static string RequireValue(string[] args, ref int i, string name)
+    {
+        if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
+            throw new ArgumentException($"Missing value for {name}");
+
+        return args[++i];
     }
 
     static void PrintHelp()
@@ -172,15 +189,18 @@ Usage:
   wpch [options]
 
 Options:
-  -l, --list <path>     Path to wallpapers list file
-  -i, --interval <time> Interval (e.g. 10s, 5m, 1h)
-      --has <text>      Filter wallpapers containing text
-  -h, --help            Show help
-      --img <url>       Set wallpaper from a specific URL
+  -l, --list <path>      Path to wallpapers list file
+  -i, --interval <time>  Interval (e.g. 10s, 5m, 1h)
+  -f, --has <text>       Filter wallpapers containing text
+  -v, --verbose          Show download and selection details
+  -t, --title            Print selected wallpaper name
+  -h, --help             Show help
+      --img <url>        Set wallpaper from a specific URL
+      --version          Show program version
 
 Examples:
-    wpch -l wallpapers.txt -i 10m
-    wpch --has cat --interval 5m
+  wpch -l wallpapers.txt -i 10m
+  wpch --has cat --interval 5m
 """);
     }
 
@@ -210,16 +230,23 @@ Examples:
     static async Task<int> RunOnce()
     {
         string selected = _imgURL ?? _wallpapers[Random.Shared.Next(_wallpapers.Length)];
-
+        Log($"Selected wallpaper: {selected}");
         if (!Uri.TryCreate(selected, UriKind.Absolute, out _))
         {
             Console.Error.WriteLine($"Invalid URL: {selected}");
             return 1;
         }
+        else if (_showTitle)
+        {
+            Console.WriteLine(
+                Path.GetFileNameWithoutExtension(
+                    new Uri(selected).AbsolutePath));
+        }
 
         using var response = await GetRetry(selected);
 
         var contentType = response.Content.Headers.ContentType?.MediaType;
+        Log($"Content-Type: {contentType}");
         if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/bmp"))
         {
             Console.Error.WriteLine($"Unsupported wallpaper MIME type: {contentType}");
@@ -236,6 +263,7 @@ Examples:
         };
 
         string wallpaperPath = Path.Combine(AppContext.BaseDirectory, $"wallpaper{extension}");
+        Log($"Saving to {wallpaperPath}");
         await using (var stream = await response.Content.ReadAsStreamAsync())
         await using (var fileStream = new FileStream(
             wallpaperPath,
@@ -243,16 +271,64 @@ Examples:
             FileAccess.Write,
             FileShare.None))
         {
-            await stream.CopyToAsync(fileStream);
+            long? totalBytes = response.Content.Headers.ContentLength;
+
+            byte[] buffer = new byte[81920];
+            long downloaded = 0;
+            int read;
+            int lastPercent = -1;
+
+            while ((read = await stream.ReadAsync(buffer)) > 0)
+            {
+                await fileStream.WriteAsync(buffer.AsMemory(0, read));
+
+                downloaded += read;
+
+                if (_verbose && totalBytes is not null)
+                {
+                    int percent = (int)(downloaded * 100 / totalBytes.Value);
+
+                    if (percent != lastPercent)
+                    {
+                        Console.Write(
+                            $"\rDownloading: {percent}% " +
+                            $"({FormatSize(downloaded)} / {FormatSize(totalBytes.Value)})"
+                        );
+
+                        lastPercent = percent;
+                    }
+                }
+            }
+            if (_verbose && totalBytes is not null)
+            {
+                Console.WriteLine();
+            }
             await fileStream.FlushAsync();
         }
 
+        Log("Setting wallpaper");
         if (!WallpaperChanger.SetWallpaper(wallpaperPath))
         {
             Console.Error.WriteLine("Failed to set wallpaper");
             return 1;
         }
+        Log("Done!");
         return 0;
+    }
+
+    static string FormatSize(long bytes)
+    {
+        const double KB = 1024;
+        const double MB = KB * 1024;
+        const double GB = MB * 1024;
+
+        return bytes switch
+        {
+            >= (long)GB => $"{bytes / GB:F1} GB",
+            >= (long)MB => $"{bytes / MB:F1} MB",
+            >= (long)KB => $"{bytes / KB:F1} KB",
+            _ => $"{bytes} B"
+        };
     }
 
     static async Task<HttpResponseMessage> GetRetry(string url, int retries = 5)
@@ -263,17 +339,19 @@ Examples:
         {
             try
             {
+                Log($"Download attempt {attempt}/{retries}");
                 var response = await Http.GetAsync(
                     url,
                     HttpCompletionOption.ResponseHeadersRead
                 );
-
+                Log($"Server returned {(int)response.StatusCode}");
                 if ((int)response.StatusCode >= 500)
                 {
                     response.Dispose();
 
                     if (attempt < retries)
                     {
+                        Log("Retrying...");
                         await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
                         continue;
                     }
@@ -294,6 +372,7 @@ Examples:
 
                 if (attempt < retries)
                 {
+                    Log($"Retrying after error: {ex.Message}");
                     await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
                     continue;
                 }
