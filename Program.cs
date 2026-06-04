@@ -109,6 +109,7 @@ class Program
 
         using var response = await GetRetry(selected);
         var contentType = response.Content.Headers.ContentType?.MediaType;
+        Log($"Content-Type: {contentType}");
 
         if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/bmp"))
         {
@@ -125,6 +126,7 @@ class Program
         };
 
         string wallpaperPath = Path.Combine(AppContext.BaseDirectory, $"wallpaper{extension}");
+        Log($"Saving to {wallpaperPath}");
         await SaveFileAsync(response, wallpaperPath);
 
         Log("Setting wallpaper");
@@ -133,6 +135,7 @@ class Program
             Console.Error.WriteLine("Failed to set wallpaper");
             return 1;
         }
+        Log("Done!");
         return 0;
     }
 
@@ -185,8 +188,10 @@ class Program
             {
                 Log($"Download attempt {attempt}/{retries}");
                 var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                Log($"Server returned {(int)response.StatusCode}");
                 if ((int)response.StatusCode >= 500 && attempt < retries)
                 {
+                    Log("Retrying...");
                     response.Dispose();
                     await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
                     continue;
@@ -200,6 +205,7 @@ class Program
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
+                Log($"Retrying after error: {ex.Message}");
                 if (attempt == retries) throw;
                 await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
             }
