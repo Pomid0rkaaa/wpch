@@ -6,13 +6,34 @@ A lightweight Windows CLI tool that randomly changes your desktop wallpaper from
 
 - Random wallpaper selection from URL list
 - Interval mode
-- Case-insensitive filtering
+- Case-insensitive filtering (`-f` / `--has`)
+- Shuffle and seed support for reproducible random order (`-s` / `--shuffle`, `-S` / `--seed`)
+- Dry-run mode to preview selection without downloading (`--dry-run`)
+- Verbose output (`--verbose` / `-v`)
+- Show wallpaper title (`--title` / `-t`)
+- Count matching wallpapers (`--count` / `-c`)
 - Retry logic for failed downloads
-- Built-in help
+- Built-in help and version info (`--help` / `-h`, `--version`)
 - Simple `wallpapers.txt` config
 - Low memory usage
-- No dependencies besides .NET runtime
 - Windows-only
+
+## Quick reference (flags)
+
+| Short | Long                    | Description                                                |
+| ----- | ----------------------- | ---------------------------------------------------------- |
+| -l    | --list &lt;path&gt;     | Path to wallpaper URL list                                 |
+| -i    | --interval &lt;time&gt; | Change interval (`10s`, `5m`, `1h`)                        |
+| -f    | --has &lt;text&gt;      | Filter URLs containing text (case-insensitive)             |
+| -v    | --verbose               | Show download and selection details                        |
+| -t    | --title                 | Print selected wallpaper name                              |
+| -c    | --count                 | Show number of wallpapers matching filter                  |
+| -s    | --shuffle               | Cycle through wallpapers without repeats                   |
+| -S    | --seed &lt;n&gt;        | Use deterministic random seed                              |
+| -h    | --help                  | Show help                                                  |
+|       | --version               | Print program version                                      |
+|       | --dry-run               | Show which wallpaper would be selected without downloading |
+|       | --img &lt;URL&gt;       | Set wallpaper from a specific URL                          |
 
 ## Usage
 
@@ -46,6 +67,7 @@ wpch.exe -l nature.txt
 
 ```powershell
 wpch.exe --has cat
+wpch.exe -f dog
 ```
 
 ### Image right away
@@ -60,15 +82,34 @@ wpch.exe --img https://example.com/wallpaper.jpg
 wpch.exe --list wallpapers.txt --has nature --interval 5m
 ```
 
-## Options
+### Shuffle / Seed
 
-| Option                      | Description                                    |
-| --------------------------- | ---------------------------------------------- |
-| -l, --list &lt;path&gt;     | Path to wallpaper URL list                     |
-| -i, --interval &lt;time&gt; | Change interval (`10s`, `5m`, `1h`)            |
-| --has &lt;text&gt;          | Filter URLs containing text (case-insensitive) |
-| -h, --help                  | Show help                                      |
-| --img                       | Set wallpaper from a specific URL              |
+```powershell
+wpch.exe --shuffle
+wpch.exe -l nature.txt -s -S 420
+wpch.exe --list animals.txt --seed 69
+```
+
+### Dry-run (preview selection)
+
+```powershell
+wpch.exe --dry-run
+```
+
+### Count matching wallpapers
+
+```powershell
+wpch.exe --count
+wpch.exe -c --has nature
+```
+
+### Verbose output / Show title
+
+```powershell
+wpch.exe --verbose --title
+wpch.exe -v
+wpch.exe -t
+```
 
 ## Configuration
 
@@ -100,5 +141,5 @@ Default location: executable directory
 ## Example
 
 ```powershell
-wpch --list wallpapers.txt --has nature --interval 10m
+wpch.exe -l wallpapers.txt -f nature -i 10m -s -S 42 -v -t
 ```
