@@ -24,6 +24,10 @@ class Program
     private static bool _showTitle;
     private static bool _dryRun;
     private static bool _countOnly;
+    private static bool _shuffle;
+    private static Queue<string> _shuffleQueue = new();
+    private static Random _random = Random.Shared;
+    private static int? _seed;
     private static string? _listPath;
     private static string? _filter;
     private static string? _imgURL;
@@ -44,10 +48,11 @@ class Program
             PrintHelp();
             return 1;
         }
+        if (_seed is not null)
+            _random = new Random(_seed.Value);
+
         if (_imgURL is not null)
-        {
             return await RunOnceErrors();
-        }
 
         _listPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
         if (!File.Exists(_listPath))
@@ -120,6 +125,9 @@ class Program
                     case "--count":
                         _countOnly = true;
                         break;
+                    case "--shuffle":
+                        _shuffle = true;
+                        break;
                     case "--help":
                     case "-h":
                         PrintHelp();
@@ -128,6 +136,21 @@ class Program
                     case "--version":
                         Console.WriteLine("wpch v1.2");
                         Environment.Exit(0);
+                        break;
+                    case "--seed":
+                        if (_seed is not null)
+                        {
+                            Console.Error.WriteLine("Seed specified more than once.");
+                            return false;
+                        }
+
+                        if (!int.TryParse(RequireValue(args, ref i, "seed"), out int seed))
+                        {
+                            Console.Error.WriteLine("Invalid seed.");
+                            return false;
+                        }
+
+                        _seed = seed;
                         break;
                     case "--img":
                         if (_imgURL is not null)
@@ -210,6 +233,8 @@ Options:
   -t, --title            Print selected wallpaper name
   -h, --help             Show help
   -c, --count            Show number of wallpapers matching filter
+  -s, --shuffle          Cycle through wallpapers without repeats
+  -S, --seed <n>         Use deterministic random seed
       --dry-run          Show which wallpaper would be selected without downloading
       --img <url>        Set wallpaper from a specific URL
       --version          Print program version
@@ -245,7 +270,25 @@ Examples:
 
     static async Task<int> RunOnce()
     {
-        string selected = _imgURL ?? _wallpapers[Random.Shared.Next(_wallpapers.Length)];
+        string selected;
+
+        if (_imgURL is not null)
+        {
+            selected = _imgURL;
+        }
+        else if (_shuffle)
+        {
+            if (_shuffleQueue.Count == 0)
+            {
+                RefillShuffleQueue();
+            }
+
+            selected = _shuffleQueue.Dequeue();
+        }
+        else
+        {
+            selected = _wallpapers[_random.Next(_wallpapers.Length)];
+        }
 
         if (_dryRun)
         {
@@ -258,7 +301,7 @@ Examples:
         }
 
         Log($"Selected wallpaper: {selected}");
-        
+
         if (!Uri.TryCreate(selected, UriKind.Absolute, out _))
         {
             Console.Error.WriteLine($"Invalid URL: {selected}");
@@ -342,6 +385,19 @@ Examples:
         }
         Log("Done!");
         return 0;
+    }
+
+    static void RefillShuffleQueue()
+    {
+        var items = _wallpapers.ToArray();
+
+        for (int i = items.Length - 1; i > 0; i--)
+        {
+            int j = _random.Next(i + 1);
+            (items[i], items[j]) = (items[j], items[i]);
+        }
+
+        _shuffleQueue = new Queue<string>(items);
     }
 
     static string FormatSize(long bytes)
