@@ -33,12 +33,15 @@ class Arguments
                         parsed.Verbose = true;
                         break;
                     case "--dry-run":
+                    case "-d":
                         parsed.DryRun = true;
                         break;
                     case "--count":
+                    case "-c":
                         parsed.CountOnly = true;
                         break;
                     case "--shuffle":
+                    case "-s":
                         parsed.Shuffle = true;
                         break;
                     case "--help":
@@ -47,15 +50,18 @@ class Arguments
                         Environment.Exit(0);
                         break;
                     case "--version":
+                    case "-V":
                         Console.WriteLine("wpch v1.2");
                         Environment.Exit(0);
                         break;
                     case "--seed":
+                    case "-S": 
                         if (parsed.Seed is not null) throw new ArgumentException("Seed specified more than once.");
                         if (!int.TryParse(RequireValue(args, ref i, "seed"), out int seed)) throw new ArgumentException("Invalid seed.");
                         parsed.Seed = seed;
                         break;
                     case "--img":
+                    case "-I":
                         if (parsed.ImgURL is not null) throw new ArgumentException("Image specified more than once.");
                         if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for image");
                         var img = args[++i];
@@ -132,9 +138,9 @@ Options:
   -c, --count            Show number of wallpapers matching filter
   -s, --shuffle          Cycle through wallpapers without repeats
   -S, --seed <n>         Use deterministic random seed
-      --dry-run          Show which wallpaper would be selected without downloading
-      --img <url>        Set wallpaper from a specific URL
-      --version          Print program version
+  -d, --dry-run          Show which wallpaper would be selected without downloading
+  -I, --img <url>        Set wallpaper from a specific URL
+  -V, --version          Print program version
 """);
     }
 }
