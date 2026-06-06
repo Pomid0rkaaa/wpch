@@ -146,6 +146,18 @@ class Program
             _ => throw new InvalidOperationException()
         };
 
+        string[] exts = [".jpg", ".png", ".bmp"];
+        foreach (var ext in exts)
+        {
+            string oldFile = Path.Combine(AppContext.BaseDirectory, $"wallpaper{ext}");
+            if (File.Exists(oldFile))
+            {
+                Log("Deleting previous wallpaper");
+                try { File.Delete(oldFile); }
+                catch { }
+            }
+        }
+
         string wallpaperPath = Path.Combine(AppContext.BaseDirectory, $"wallpaper{extension}");
         Log($"Saving to {wallpaperPath}");
         await SaveFileAsync(response, wallpaperPath);
