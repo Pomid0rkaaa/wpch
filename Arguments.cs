@@ -66,7 +66,7 @@ class Arguments
                         if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for image");
                         var img = args[++i];
                         if (img.StartsWith('-') && img != "-") throw new ArgumentException("Missing value for image");
-                        parsed.ListPath = img == "-" ? "stdin" : img;
+                        parsed.ImgURL = img == "-" ? "stdin" : img;
                         break;
                     case "--interval":
                     case "-i":
