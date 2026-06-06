@@ -51,7 +51,7 @@ class Arguments
                         break;
                     case "--version":
                     case "-V":
-                        Console.WriteLine("wpch v1.2");
+                        Console.WriteLine("wpch v1.3");
                         Environment.Exit(0);
                         break;
                     case "--seed":
