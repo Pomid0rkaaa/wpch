@@ -30,21 +30,27 @@ class Program
         if (_config.ImgURL is not null)
             return await RunOnceErrors();
 
-        _config.ListPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
-        if (!File.Exists(_config.ListPath))
+        IEnumerable<string> query;
+        if (_config.ListPath == "stdin")
+            query = ReadStdin();
+        else
         {
-            Console.Error.WriteLine($"{_config.ListPath} was not found");
-            return 1;
+            _config.ListPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
+            if (!File.Exists(_config.ListPath))
+            {
+                Console.Error.WriteLine($"{_config.ListPath} was not found");
+                return 1;
+            }
+
+            query = await File.ReadAllLinesAsync(_config.ListPath);
         }
 
-        var query = (await File.ReadAllLinesAsync(_config.ListPath))
+        query = query
             .Select(x => x.Trim())
             .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'));
 
         if (!string.IsNullOrEmpty(_config.Filter))
-        {
             query = query.Where(x => x.Contains(_config.Filter, StringComparison.OrdinalIgnoreCase));
-        }
 
         _wallpapers = [.. query];
 
@@ -78,6 +84,15 @@ class Program
         }
     }
 
+    static IEnumerable<string> ReadStdin()
+    {
+        string? line;
+        while ((line = Console.ReadLine()) != null)
+        {
+            yield return line;
+        }
+    }
+
     static async Task<int> RunOnceErrors()
     {
         try { return await RunOnce(); }
@@ -88,6 +103,12 @@ class Program
 
     static async Task<int> RunOnce()
     {
+        if (_config.ImgURL == "stdin") {string? line;
+            if ((line = Console.ReadLine()) != null)
+            {
+                _config.ImgURL = line;
+            }
+        }
         string selected = _config.ImgURL ??
             (_config.Shuffle ? (_shuffleQueue.Count == 0 ? RefillAndReturn() : _shuffleQueue.Dequeue()) : _wallpapers[_random.Next(_wallpapers.Length)]);
 

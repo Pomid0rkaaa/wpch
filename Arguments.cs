@@ -1,4 +1,6 @@
-﻿namespace wpch;
+﻿using System.Xml.Linq;
+
+namespace wpch;
 
 class Arguments
 {
@@ -55,7 +57,10 @@ class Arguments
                         break;
                     case "--img":
                         if (parsed.ImgURL is not null) throw new ArgumentException("Image specified more than once.");
-                        parsed.ImgURL = RequireValue(args, ref i, "image");
+                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for image");
+                        var img = args[++i];
+                        if (img.StartsWith('-') && img != "-") throw new ArgumentException("Missing value for image");
+                        parsed.ListPath = img == "-" ? "stdin" : img;
                         break;
                     case "--interval":
                     case "-i":
@@ -65,7 +70,10 @@ class Arguments
                     case "--list":
                     case "-l":
                         if (parsed.ListPath is not null) throw new ArgumentException("List specified more than once.");
-                        parsed.ListPath = RequireValue(args, ref i, "list");
+                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for list");
+                        var ls = args[++i];
+                        if (ls.StartsWith('-') && ls != "-") throw new ArgumentException("Missing value for list");
+                        parsed.ListPath = ls == "-" ? "stdin" : ls;
                         break;
                     case "--has":
                     case "-f":
