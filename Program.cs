@@ -24,6 +24,13 @@ class Program
         }
         _config = config;
 
+        using Mutex mutex = new(true, "Global\\wpch_SingleInstance_Mutex", out bool isNewInstance);
+        if (!isNewInstance)
+        {
+            Console.Error.WriteLine("wpch is already running in the background.");
+            return 1;
+        }
+
         if (_config.Seed is not null)
             _random = new Random(_config.Seed.Value);
 
@@ -103,7 +110,9 @@ class Program
 
     static async Task<int> RunOnce()
     {
-        if (_config.ImgURL == "stdin") {string? line;
+        if (_config.ImgURL == "stdin")
+        {
+            string? line;
             if ((line = Console.ReadLine()) != null)
             {
                 _config.ImgURL = line;
