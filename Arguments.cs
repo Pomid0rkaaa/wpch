@@ -1,6 +1,4 @@
-﻿using System.Xml.Linq;
-
-namespace wpch;
+﻿namespace wpch;
 
 class Arguments
 {
@@ -88,18 +86,13 @@ class Arguments
                         parsed.ListPath = ls == "-" ? "stdin" : ls;
                         break;
                     case "-f":
-                        if (parsed.Include is not null && parsed.Exclude is not null) throw new ArgumentException("Filter specified more than once.");
-                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for list");
+                        if (parsed.Include is not null || parsed.Exclude is not null) throw new ArgumentException("Cannot mix -f with --include/--exclude");
+                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for filter");
                         var filter = args[++i].Split(',');
                         List<string> include = [], exclude = [];
-                        foreach (var f in filter)
-                        {
-                            if (f.StartsWith('-'))
-                                exclude.Add(f[1..]);
-                            else
-                                include.Add(f);
-                        }
+                        parsed.Include = [.. filter.Where(f => !f.StartsWith('-'))];
                         parsed.Include = [.. include];
+                        parsed.Exclude = [.. filter.Where(f => f.StartsWith('-')).Select(f => f[1..])];
                         parsed.Exclude = [.. exclude];
                         break;
                     case "--include":
