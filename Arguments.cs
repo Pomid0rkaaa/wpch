@@ -11,7 +11,8 @@ class Arguments
     public bool Shuffle { get; set; }
     public int? Seed { get; set; }
     public string? ListPath { get; set; }
-    public string? Filter { get; set; }
+    public string[]? Include { get; set; }
+    public string[]? Exclude { get; set; }
     public string? ImgURL { get; set; }
     public TimeSpan? Interval { get; set; }
 
@@ -55,7 +56,7 @@ class Arguments
                         Environment.Exit(0);
                         break;
                     case "--seed":
-                    case "-S": 
+                    case "-S":
                         if (parsed.Seed is not null) throw new ArgumentException("Seed specified more than once.");
                         if (!int.TryParse(RequireValue(args, ref i, "seed"), out int seed)) throw new ArgumentException("Invalid seed.");
                         parsed.Seed = seed;
@@ -81,10 +82,28 @@ class Arguments
                         if (ls.StartsWith('-') && ls != "-") throw new ArgumentException("Missing value for list");
                         parsed.ListPath = ls == "-" ? "stdin" : ls;
                         break;
-                    case "--has":
                     case "-f":
-                        if (parsed.Filter is not null) throw new ArgumentException("Filter specified more than once.");
-                        parsed.Filter = RequireValue(args, ref i, "filter");
+                        if (parsed.Include is not null && parsed.Exclude is not null) throw new ArgumentException("Filter specified more than once.");
+                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for list");
+                        var filter = args[++i].Split(',');
+                        List<string> include = [], exclude = [];
+                        foreach (var f in filter)
+                        {
+                            if (f.StartsWith('-'))
+                                exclude.Add(f[1..]);
+                            else
+                                include.Add(f);
+                        }
+                        parsed.Include = [.. include];
+                        parsed.Exclude = [.. exclude];
+                        break;
+                    case "--include":
+                        if (parsed.Include is not null) throw new ArgumentException("Include specified more than once.");
+                        parsed.Include = RequireValue(args, ref i, "include").Split(',');
+                        break;
+                    case "--exclude":
+                        if (parsed.Exclude is not null) throw new ArgumentException("Exclude specified more than once.");
+                        parsed.Exclude = RequireValue(args, ref i, "exclude").Split(',');
                         break;
                     default:
                         Console.Error.WriteLine($"Unknown argument: {args[i]}");
@@ -131,7 +150,10 @@ Usage: wpch [options]
 Options:
   -l, --list <path>      Path to wallpapers list file
   -i, --interval <time>  Interval (e.g. 10s, 5m, 1h)
-  -f, --has <text>       Filter wallpapers containing text
+      --include <text>   Filter wallpapers including comma separated substring
+      --exclude <text>   Filter wallpapers excluding comma separated substring
+  -f <text>              Filter wallpapers by comma separated substrings
+                           prefix '-' to exclude
   -v, --verbose          Show download and selection details
   -t, --title            Print selected wallpaper name
   -h, --help             Show help

@@ -56,8 +56,10 @@ class Program
             .Select(x => x.Trim())
             .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'));
 
-        if (!string.IsNullOrEmpty(_config.Filter))
-            query = query.Where(x => x.Contains(_config.Filter, StringComparison.OrdinalIgnoreCase));
+        if (_config.Include is not null && _config.Include.Length > 0)
+            query = query.Where(x => _config.Include.All(sub => x.Contains(sub, StringComparison.OrdinalIgnoreCase)));
+        if (_config.Exclude is not null && _config.Exclude.Length > 0)
+            query = query.Where(x => _config.Exclude.All(sub => !x.Contains(sub, StringComparison.OrdinalIgnoreCase)));
 
         _wallpapers = [.. query];
 
