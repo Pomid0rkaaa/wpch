@@ -15,14 +15,13 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
-        var config = Arguments.Parse(args);
-        if (config == null)
+        _config = ArgumentParser.Parse(args)!;
+        if (_config == null)
         {
-            Console.Error.WriteLine("Invalid arguments.");
-            Arguments.PrintHelp();
+            Console.Error.WriteLine("Invalid arguments.\n");
+            ArgumentParser.PrintHelp();
             return 1;
         }
-        _config = config;
 
         using Mutex mutex = new(true, "Global\\wpch_SingleInstance_Mutex", out bool isNewInstance);
         if (!isNewInstance)

@@ -1,6 +1,6 @@
 ﻿namespace wpch;
 
-class Arguments
+public class Arguments
 {
     public bool Verbose { get; set; }
     public bool ShowTitle { get; set; }
@@ -14,99 +14,115 @@ class Arguments
     public string[]? Exclude { get; set; }
     public string? ImgURL { get; set; }
     public TimeSpan? Interval { get; set; }
+}
+
+
+public class ArgumentParser
+{
+    private record Option(Action<string?> Handler, bool TakesValue = false);
+
+    private static readonly IReadOnlyDictionary<string, string> Aliases = new Dictionary<string, string>()
+    {
+        ["-t"] = "--title",
+        ["-v"] = "--verbose",
+        ["-d"] = "--dry-run",
+        ["-c"] = "--count",
+        ["-L"] = "--list-all",
+        ["-s"] = "--shuffle",
+        ["-h"] = "--help",
+        ["-V"] = "--version",
+        ["-S"] = "--seed",
+        ["-I"] = "--img",
+        ["-i"] = "--interval",
+        ["-l"] = "--list",
+    };
 
     public static Arguments? Parse(string[] args)
     {
         var parsed = new Arguments();
+
+        var map = new Dictionary<string, Option>
+        {
+            ["--title"] = new(_ => parsed.ShowTitle = true),
+            ["--verbose"] = new(_ => parsed.Verbose = true),
+            ["--dry-run"] = new(_ => parsed.DryRun = true),
+            ["--count"] = new(_ => parsed.CountOnly = true),
+            ["--list-all"] = new(_ => parsed.ListAll = true),
+            ["--shuffle"] = new(_ => parsed.Shuffle = true),
+            ["--help"] = new(_ =>
+            {
+                PrintHelp();
+                Environment.Exit(0);
+            }),
+            ["--version"] = new(_ =>
+            {
+                Console.WriteLine("wpch v1.3");
+                Environment.Exit(0);
+            }),
+            ["--seed"] = new(v =>
+            {
+                EnsureNotSet(parsed.Seed, "Seed");
+
+                if (!int.TryParse(v, out var seed))
+                    throw new ArgumentException("Invalid seed.");
+
+                parsed.Seed = seed;
+            }, true),
+            ["--img"] = new(v =>
+            {
+                EnsureNotSet(parsed.ImgURL, "Image");
+                parsed.ImgURL = v == "-" ? "stdin" : v;
+            }, true),
+            ["--interval"] = new(v =>
+            {
+                EnsureNotSet(parsed.Interval, "Interval");
+                parsed.Interval = ParseTime(v!);
+            }, true),
+            ["--list"] = new(v =>
+            {
+                EnsureNotSet(parsed.ListPath, "List");
+                if (v!.StartsWith('-') && v != "v")
+                    throw new ArgumentException("Missing value for list");
+                parsed.ListPath = v == "-" ? "stdin" : v;
+            }, true),
+            ["--include"] = new(v =>
+            {
+                EnsureNotSet(parsed.Include, "Include");
+                parsed.Include = v!.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            }, true),
+            ["--exclude"] = new(v =>
+            {
+                EnsureNotSet(parsed.Exclude, "Exclude");
+                parsed.Exclude = v!.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            }, true),
+            ["-f"] = new(v =>
+            {
+                if (parsed.Include is not null || parsed.Exclude is not null)
+                    throw new ArgumentException("Cannot mix -f with --include/--exclude");
+                var filter = v!.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                parsed.Include = [.. filter.Where(f => !f.StartsWith('-'))];
+                parsed.Exclude = [.. filter.Where(f => f.StartsWith('-')).Select(f => f[1..])];
+            }, true),
+        };
+
         try
         {
             for (int i = 0; i < args.Length; i++)
             {
-                switch (args[i])
-                {
-                    case "--title":
-                    case "-t":
-                        parsed.ShowTitle = true;
-                        break;
-                    case "--verbose":
-                    case "-v":
-                        parsed.Verbose = true;
-                        break;
-                    case "--dry-run":
-                    case "-d":
-                        parsed.DryRun = true;
-                        break;
-                    case "--count":
-                    case "-c":
-                        parsed.CountOnly = true;
-                        break;
-                    case "--list-all":
-                    case "-L":
-                        parsed.ListAll = true;
-                        break;
-                    case "--shuffle":
-                    case "-s":
-                        parsed.Shuffle = true;
-                        break;
-                    case "--help":
-                    case "-h":
-                        PrintHelp();
-                        Environment.Exit(0);
-                        break;
-                    case "--version":
-                    case "-V":
-                        Console.WriteLine("wpch v1.3");
-                        Environment.Exit(0);
-                        break;
-                    case "--seed":
-                    case "-S":
-                        if (parsed.Seed is not null) throw new ArgumentException("Seed specified more than once.");
-                        if (!int.TryParse(RequireValue(args, ref i, "seed"), out int seed)) throw new ArgumentException("Invalid seed.");
-                        parsed.Seed = seed;
-                        break;
-                    case "--img":
-                    case "-I":
-                        if (parsed.ImgURL is not null) throw new ArgumentException("Image specified more than once.");
-                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for image");
-                        var img = args[++i];
-                        if (img.StartsWith('-') && img != "-") throw new ArgumentException("Missing value for image");
-                        parsed.ImgURL = img == "-" ? "stdin" : img;
-                        break;
-                    case "--interval":
-                    case "-i":
-                        if (parsed.Interval is not null) throw new ArgumentException("Interval specified more than once.");
-                        parsed.Interval = ParseTime(RequireValue(args, ref i, "interval"));
-                        break;
-                    case "--list":
-                    case "-l":
-                        if (parsed.ListPath is not null) throw new ArgumentException("List specified more than once.");
-                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for list");
-                        var ls = args[++i];
-                        if (ls.StartsWith('-') && ls != "-") throw new ArgumentException("Missing value for list");
-                        parsed.ListPath = ls == "-" ? "stdin" : ls;
-                        break;
-                    case "-f":
-                        if (parsed.Include is not null || parsed.Exclude is not null) throw new ArgumentException("Cannot mix -f with --include/--exclude");
-                        if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for filter");
-                        var filter = args[++i].Split(',');
-                        List<string> include = [], exclude = [];
-                        parsed.Include = [.. filter.Where(f => !f.StartsWith('-'))];
-                        parsed.Include = [.. include];
-                        parsed.Exclude = [.. filter.Where(f => f.StartsWith('-')).Select(f => f[1..])];
-                        parsed.Exclude = [.. exclude];
-                        break;
-                    case "--include":
-                        if (parsed.Include is not null) throw new ArgumentException("Include specified more than once.");
-                        parsed.Include = RequireValue(args, ref i, "include").Split(',');
-                        break;
-                    case "--exclude":
-                        if (parsed.Exclude is not null) throw new ArgumentException("Exclude specified more than once.");
-                        parsed.Exclude = RequireValue(args, ref i, "exclude").Split(',');
-                        break;
-                    default:
-                        Console.Error.WriteLine($"Unknown argument: {args[i]}");
-                        return null;
-                }
+                var key = args[i];
+
+                if (Aliases.TryGetValue(key, out var normalized))
+                    key = normalized;
+
+                if (!map.TryGetValue(key, out var opt))
+                    throw new ArgumentException($"Unknown argument: {key}");
+
+                string? value = null;
+
+                if (opt.TakesValue)
+                    value = RequireValue(args, ref i, key);
+
+                opt.Handler(value);
             }
         }
         catch (ArgumentException ex)
@@ -118,9 +134,14 @@ class Arguments
         return parsed;
     }
 
+    private static void EnsureNotSet<T>(T? val, string name)
+    {
+        if (val is not null) throw new ArgumentException($"{name} specified more than once.");
+    }
+
     private static string RequireValue(string[] args, ref int i, string name)
     {
-        if (i + 1 >= args.Length || args[i + 1].StartsWith('-'))
+        if (i + 1 >= args.Length)
             throw new ArgumentException($"Missing value for {name}");
         return args[++i];
     }
@@ -128,11 +149,11 @@ class Arguments
     private static TimeSpan ParseTime(string input)
     {
         if (input.Length < 2) throw new ArgumentException("Invalid interval format");
-        char unit = input[^1];
+
         if (!int.TryParse(input[..^1], out int value) || value <= 0)
             throw new ArgumentException("Invalid interval value");
 
-        return unit switch
+        return input[^1] switch
         {
             's' => TimeSpan.FromSeconds(value),
             'm' => TimeSpan.FromMinutes(value),
