@@ -31,37 +31,12 @@ class Program
             return 1;
         }
 
-        if (_config.Seed is not null)
-            _random = new Random(_config.Seed.Value);
+        _random = _config.Seed is int seed ? new Random(seed) : _random;
 
         if (_config.ImgURL is not null)
             return await RunOnceErrors();
 
-        IEnumerable<string> query;
-        if (_config.ListPath == "stdin")
-            query = ReadStdin();
-        else
-        {
-            _config.ListPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
-            if (!File.Exists(_config.ListPath))
-            {
-                Console.Error.WriteLine($"{_config.ListPath} was not found");
-                return 1;
-            }
-
-            query = await File.ReadAllLinesAsync(_config.ListPath);
-        }
-
-        query = query
-            .Select(x => x.Trim())
-            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'));
-
-        if (_config.Include is not null && _config.Include.Length > 0)
-            query = query.Where(x => _config.Include.All(sub => x.Contains(sub, StringComparison.OrdinalIgnoreCase)));
-        if (_config.Exclude is not null && _config.Exclude.Length > 0)
-            query = query.Where(x => _config.Exclude.All(sub => !x.Contains(sub, StringComparison.OrdinalIgnoreCase)));
-
-        _wallpapers = [.. query];
+        _wallpapers = [.. Filter(await LoadQueries())];
 
         if (_wallpapers.Length == 0)
         {
@@ -78,22 +53,48 @@ class Program
 
         if (_config.CountOnly || _config.ListAll) return 0;
 
-        if (_config.Interval is null)
+        if (_config.Interval is not TimeSpan interval)
         {
             return await RunOnceErrors();
         }
 
-        var next = DateTime.UtcNow + _config.Interval.Value;
+        var next = DateTime.UtcNow + interval;
         while (true)
         {
             await RunOnceErrors();
-            next += _config.Interval.Value;
+            next += interval;
             var delay = next - DateTime.UtcNow;
             if (delay > TimeSpan.Zero)
                 await Task.Delay(delay);
             else
                 next = DateTime.UtcNow;
         }
+    }
+
+    private static async Task<IEnumerable<string>> LoadQueries()
+    {
+        if (_config.ListPath == "stdin")
+            return ReadStdin();
+
+        _config.ListPath ??= Path.Combine(AppContext.BaseDirectory, "wallpapers.txt");
+        if (!File.Exists(_config.ListPath))
+            throw new FileNotFoundException(_config.ListPath);
+
+        return await File.ReadAllLinesAsync(_config.ListPath);
+
+    }
+
+    private static IEnumerable<string> Filter(IEnumerable<string> query)
+    {
+        var q = query
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'));
+
+        if (_config.Include?.Length > 0)
+            q = q.Where(x => _config.Include.All(sub => x.Contains(sub, StringComparison.OrdinalIgnoreCase)));
+        if (_config.Exclude?.Length > 0)
+            q = q.Where(x => _config.Exclude.All(sub => !x.Contains(sub, StringComparison.OrdinalIgnoreCase)));
+        return q;
     }
 
     static IEnumerable<string> ReadStdin()
@@ -123,8 +124,7 @@ class Program
                 _config.ImgURL = line;
             }
         }
-        string selected = _config.ImgURL ??
-            (_config.Shuffle ? (_shuffleQueue.Count == 0 ? RefillAndReturn() : _shuffleQueue.Dequeue()) : _wallpapers[_random.Next(_wallpapers.Length)]);
+        string selected = GetSelectedWallpaper();
 
         if (_config.DryRun)
         {
@@ -146,7 +146,7 @@ class Program
         var contentType = response.Content.Headers.ContentType?.MediaType;
         Log($"Content-Type: {contentType}");
 
-        if (contentType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/bmp"))
+        if (contentType is null || !AllowedTypes.Contains(contentType))
         {
             Console.Error.WriteLine($"Unsupported wallpaper MIME type: {contentType}");
             return 1;
@@ -186,6 +186,14 @@ class Program
         return 0;
     }
 
+    private static string GetSelectedWallpaper()
+    {
+        if (_config.ImgURL is not null) return _config.ImgURL;
+        if (_config.Shuffle)
+            return _shuffleQueue.Count == 0 ? RefillAndReturn() : _shuffleQueue.Dequeue();
+        return _wallpapers[_random.Next(_wallpapers.Length)];
+    }
+
     private static string RefillAndReturn()
     {
         var items = _wallpapers.ToArray();
@@ -197,6 +205,14 @@ class Program
         _shuffleQueue = new Queue<string>(items);
         return _shuffleQueue.Dequeue();
     }
+
+    static readonly HashSet<string> AllowedTypes =
+    [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/bmp"
+    ];
 
     private static async Task SaveFileAsync(HttpResponseMessage response, string path)
     {
