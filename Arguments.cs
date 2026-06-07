@@ -56,7 +56,7 @@ public class ArgumentParser
             }),
             ["--version"] = new(_ =>
             {
-                Console.WriteLine("wpch v1.3");
+                Console.WriteLine("wpch v1.4");
                 Environment.Exit(0);
             }),
             ["--seed"] = new(v =>
