@@ -44,8 +44,20 @@ class Program
         }
 
         if (_config.ListAll)
-            foreach (var w in _wallpapers)
-                Console.WriteLine(_config.ShowTitle ? Path.GetFileNameWithoutExtension(new Uri(w).AbsolutePath) : w);
+        {
+            static string Format(string item) =>
+                _config.ShowTitle
+                    ? Path.GetFileNameWithoutExtension(new Uri(item).AbsolutePath)
+                    : item;
+
+            IEnumerable<string> items =
+                _config.Shuffle
+                    ? new[] { RefillAndReturn() }.Concat(_shuffleQueue)
+                    : _wallpapers;
+
+            foreach (var item in items)
+                Console.WriteLine(Format(item));
+        }
 
         if (_config.CountOnly)
             Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
