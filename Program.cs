@@ -69,11 +69,14 @@ class Program
             return 1;
         }
 
+        if (_config.ListAll)
+            foreach (var w in _wallpapers)
+                Console.WriteLine(_config.ShowTitle ? Path.GetFileNameWithoutExtension(new Uri(w).AbsolutePath) : w);
+
         if (_config.CountOnly)
-        {
             Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
-            return 0;
-        }
+
+        if (_config.CountOnly || _config.ListAll) return 0;
 
         if (_config.Interval is null)
         {

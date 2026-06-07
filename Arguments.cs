@@ -8,6 +8,7 @@ class Arguments
     public bool ShowTitle { get; set; }
     public bool DryRun { get; set; }
     public bool CountOnly { get; set; }
+    public bool ListAll { get; set; }
     public bool Shuffle { get; set; }
     public int? Seed { get; set; }
     public string? ListPath { get; set; }
@@ -40,6 +41,10 @@ class Arguments
                     case "--count":
                     case "-c":
                         parsed.CountOnly = true;
+                        break;
+                    case "--list-all":
+                    case "-L":
+                        parsed.ListAll = true;
                         break;
                     case "--shuffle":
                     case "-s":
@@ -158,6 +163,7 @@ Options:
   -t, --title            Print selected wallpaper name
   -h, --help             Show help
   -c, --count            Show number of wallpapers matching filter
+  -L, --list-all         List all wallpapers matching filter
   -s, --shuffle          Cycle through wallpapers without repeats
   -S, --seed <n>         Use deterministic random seed
   -d, --dry-run          Show which wallpaper would be selected without downloading
