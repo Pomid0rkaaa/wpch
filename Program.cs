@@ -1,8 +1,10 @@
-﻿namespace wpch;
+﻿using System.Net.Sockets;
+
+using wpch;
 
 class Program
 {
-    public static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private static Arguments _config = null!;
     private static Queue<string> _shuffleQueue = new();
     private static Random _random = Random.Shared;
@@ -44,69 +46,83 @@ class Program
         }
 
         if (_config.ListURLs && !_config.Check)
-        {
-            IEnumerable<string> items =
-                _config.Shuffle
-                    ? new[] { RefillAndReturn() }.Concat(_shuffleQueue)
-                    : _wallpapers;
-
-            foreach (var item in items)
-                Console.WriteLine(Title(item));
-
-            if (_config.Count)
-                Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
-        }
-        else if (!_config.ListURLs && _config.Check)
-        {
-            var semaphore = new SemaphoreSlim(20);
-
-            var tasks = _wallpapers.Select(async url =>
-            {
-                await semaphore.WaitAsync();
-                try
-                {
-                    return await Utils.CheckWallpaperAsync(url);
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
-
-            var results = await Task.WhenAll(tasks);
-
-            foreach (var (Url, Code, Ok) in results)
-                Console.WriteLine($"{Code} {Title(Url)}");
-
-            int suc = results.Count(r => r.Ok);
-            int err = results.Length - suc;
-
-            if (_config.Count)
-            {
-                Console.WriteLine($"{suc} wallpapers are ok");
-                Console.WriteLine($"{err} wallpapers are bad");
-            }
-        }
+            return ListWallpapers();
+        else if (_config.Check)
+            return await CheckWallpapersAsync();
         else if (_config.Count)
+        {
+            Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
+            return 0;
+        }
+
+        return await RunWallpaperLoopAsync();
+    }
+
+    private static int ListWallpapers()
+    {
+        IEnumerable<string> items = _config.Shuffle ? new[] { RefillAndReturn() }.Concat(_shuffleQueue) : _wallpapers;
+
+        foreach (var item in items)
+            Console.WriteLine(Title(item));
+
+        if (_config.Count)
             Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
 
-        if (_config.Count || _config.ListURLs || _config.Check) return 0;
+        return 0;
+    }
 
-        if (_config.Interval is not TimeSpan interval)
+    private static async Task<int> CheckWallpapersAsync()
+    {
+        int maxConcurrency = 20;
+        var semaphore = new SemaphoreSlim(maxConcurrency);
+
+        var tasks = _wallpapers.Select(async url =>
         {
-            return await RunOnceErrors();
+            await semaphore.WaitAsync();
+            try
+            {
+                return await Ping(url);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        foreach (var (Url, Code, Ok) in results)
+            Console.WriteLine($"{Code} {Title(Url)}");
+
+        int suc = results.Count(r => r.Ok);
+        int err = results.Length - suc;
+
+        if (_config.Count)
+        {
+            Console.WriteLine($"{suc} wallpapers are ok");
+            Console.WriteLine($"{err} wallpapers are bad");
         }
 
-        var next = DateTime.UtcNow + interval;
-        while (true)
+        return 0;
+    }
+
+    public static async Task<(string Url, int Code, bool Ok)> Ping(string url)
+    {
+        try
         {
-            await RunOnceErrors();
-            next += interval;
-            var delay = next - DateTime.UtcNow;
-            if (delay > TimeSpan.Zero)
-                await Task.Delay(delay);
-            else
-                next = DateTime.UtcNow;
+            using var req = new HttpRequestMessage(HttpMethod.Head, url);
+            var res = await Program.Http.SendAsync(req);
+
+            return (url, (int)res.StatusCode, res.IsSuccessStatusCode);
+        }
+        catch (HttpRequestException e)
+        {
+            int code = 0;
+
+            if (e.InnerException is SocketException se)
+                code = se.ErrorCode;
+
+            return (url, code, false);
         }
     }
 
@@ -142,6 +158,26 @@ class Program
         while ((line = Console.ReadLine()) != null)
         {
             yield return line;
+        }
+    }
+
+    static async Task<int> RunWallpaperLoopAsync()
+    {
+        if (_config.Interval is not TimeSpan interval)
+        {
+            return await RunOnceErrors();
+        }
+
+        var next = DateTime.UtcNow + interval;
+        while (true)
+        {
+            await RunOnceErrors();
+            next += interval;
+            var delay = next - DateTime.UtcNow;
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay);
+            else
+                next = DateTime.UtcNow;
         }
     }
 
@@ -277,13 +313,28 @@ class Program
                 int percent = (int)(downloaded * 100 / totalBytes.Value);
                 if (percent != lastPercent)
                 {
-                    Console.Write($"\rDownloading: {percent}% ({Utils.FormatSize(downloaded)} / {Utils.FormatSize(totalBytes.Value)})");
+                    Console.Write($"\rDownloading: {percent}% ({FormatSize(downloaded)} / {FormatSize(totalBytes.Value)})");
                     lastPercent = percent;
                 }
             }
         }
         if (_config.Verbose && totalBytes is not null) Console.WriteLine();
         await fileStream.FlushAsync();
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        const double KB = 1024;
+        const double MB = KB * 1024;
+        const double GB = MB * 1024;
+
+        return bytes switch
+        {
+            >= (long)GB => $"{bytes / GB:F1} GB",
+            >= (long)MB => $"{bytes / MB:F1} MB",
+            >= (long)KB => $"{bytes / KB:F1} KB",
+            _ => $"{bytes} B"
+        };
     }
 
     static async Task<HttpResponseMessage> GetRetry(string url, int retries = 5)
