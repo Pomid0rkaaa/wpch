@@ -1,8 +1,8 @@
-﻿using wpch;
+﻿namespace wpch;
 
 class Program
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    public static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private static Arguments _config = null!;
     private static Queue<string> _shuffleQueue = new();
     private static Random _random = Random.Shared;
@@ -43,26 +43,54 @@ class Program
             return 1;
         }
 
-        if (_config.ListAll)
+        if (_config.ListURLs && !_config.Check)
         {
-            static string Format(string item) =>
-                _config.ShowTitle
-                    ? Path.GetFileNameWithoutExtension(new Uri(item).AbsolutePath)
-                    : item;
-
             IEnumerable<string> items =
                 _config.Shuffle
                     ? new[] { RefillAndReturn() }.Concat(_shuffleQueue)
                     : _wallpapers;
 
             foreach (var item in items)
-                Console.WriteLine(Format(item));
-        }
+                Console.WriteLine(Title(item));
 
-        if (_config.CountOnly)
+            if (_config.Count)
+                Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
+        }
+        else if (!_config.ListURLs && _config.Check)
+        {
+            var semaphore = new SemaphoreSlim(20);
+
+            var tasks = _wallpapers.Select(async url =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    return await Utils.CheckWallpaperAsync(url);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            var results = await Task.WhenAll(tasks);
+
+            foreach (var (Url, Code, Ok) in results)
+                Console.WriteLine($"{Code} {Title(Url)}");
+
+            int suc = results.Count(r => r.Ok);
+            int err = results.Length - suc;
+
+            if (_config.Count)
+            {
+                Console.WriteLine($"{suc} wallpapers are ok");
+                Console.WriteLine($"{err} wallpapers are bad");
+            }
+        }
+        else if (_config.Count)
             Console.WriteLine($"Found {_wallpapers.Length} matching wallpapers");
 
-        if (_config.CountOnly || _config.ListAll) return 0;
+        if (_config.Count || _config.ListURLs || _config.Check) return 0;
 
         if (_config.Interval is not TimeSpan interval)
         {
@@ -139,8 +167,7 @@ class Program
 
         if (_config.DryRun)
         {
-            Console.WriteLine($"[Dry Run] Selected wallpaper: {selected}");
-            if (_config.ShowTitle) Console.WriteLine(Path.GetFileNameWithoutExtension(new Uri(selected).AbsolutePath));
+            Console.WriteLine($"[Dry Run] Selected wallpaper: {Title(selected)}");
             return 0;
         }
 
@@ -151,7 +178,7 @@ class Program
             return 1;
         }
 
-        if (_config.ShowTitle) Console.WriteLine(Path.GetFileNameWithoutExtension(new Uri(selected).AbsolutePath));
+        if (_config.ShowTitle) Console.WriteLine(Title(selected));
 
         using var response = await GetRetry(selected);
         var contentType = response.Content.Headers.ContentType?.MediaType;
@@ -224,6 +251,11 @@ class Program
         "image/png",
         "image/bmp"
     ];
+
+    static string Title(string item) =>
+                _config.ShowTitle
+                    ? Path.GetFileNameWithoutExtension(new Uri(item).AbsolutePath)
+                    : item;
 
     private static async Task SaveFileAsync(HttpResponseMessage response, string path)
     {

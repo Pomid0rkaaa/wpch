@@ -5,8 +5,9 @@ public class Arguments
     public bool Verbose { get; set; }
     public bool ShowTitle { get; set; }
     public bool DryRun { get; set; }
-    public bool CountOnly { get; set; }
-    public bool ListAll { get; set; }
+    public bool Count { get; set; }
+    public bool ListURLs { get; set; }
+    public bool Check { get; set; }
     public bool Shuffle { get; set; }
     public int? Seed { get; set; }
     public string? ListPath { get; set; }
@@ -27,14 +28,15 @@ public class ArgumentParser
         ["-v"] = "--verbose",
         ["-d"] = "--dry-run",
         ["-c"] = "--count",
-        ["-L"] = "--list-all",
+        ["-l"] = "--list",
+        ["-C"] = "--check",
         ["-s"] = "--shuffle",
         ["-h"] = "--help",
         ["-V"] = "--version",
         ["-S"] = "--seed",
         ["-I"] = "--img",
         ["-i"] = "--interval",
-        ["-l"] = "--list",
+        ["-f"] = "--file",
     };
 
     public static Arguments? Parse(string[] args)
@@ -46,8 +48,9 @@ public class ArgumentParser
             ["--title"] = new(_ => parsed.ShowTitle = true),
             ["--verbose"] = new(_ => parsed.Verbose = true),
             ["--dry-run"] = new(_ => parsed.DryRun = true),
-            ["--count"] = new(_ => parsed.CountOnly = true),
-            ["--list-all"] = new(_ => parsed.ListAll = true),
+            ["--count"] = new(_ => parsed.Count = true),
+            ["--list"] = new(_ => parsed.ListURLs = true),
+            ["--check"] = new(_ => parsed.Check = true),
             ["--shuffle"] = new(_ => parsed.Shuffle = true),
             ["--help"] = new(_ =>
             {
@@ -78,11 +81,11 @@ public class ArgumentParser
                 EnsureNotSet(parsed.Interval, "Interval");
                 parsed.Interval = ParseTime(v!);
             }, true),
-            ["--list"] = new(v =>
+            ["--file"] = new(v =>
             {
-                EnsureNotSet(parsed.ListPath, "List");
+                EnsureNotSet(parsed.ListPath, "File");
                 if (v!.StartsWith('-') && v != "v")
-                    throw new ArgumentException("Missing value for list");
+                    throw new ArgumentException("Missing value for file");
                 parsed.ListPath = v == "-" ? "stdin" : v;
             }, true),
             ["--include"] = new(v =>
@@ -95,10 +98,10 @@ public class ArgumentParser
                 EnsureNotSet(parsed.Exclude, "Exclude");
                 parsed.Exclude = v!.Split(',', StringSplitOptions.RemoveEmptyEntries);
             }, true),
-            ["-f"] = new(v =>
+            ["-F"] = new(v =>
             {
                 if (parsed.Include is not null || parsed.Exclude is not null)
-                    throw new ArgumentException("Cannot mix -f with --include/--exclude");
+                    throw new ArgumentException("Cannot mix -F with --include/--exclude");
                 var filter = v!.Split(',', StringSplitOptions.RemoveEmptyEntries);
                 parsed.Include = [.. filter.Where(f => !f.StartsWith('-'))];
                 parsed.Exclude = [.. filter.Where(f => f.StartsWith('-')).Select(f => f[1..])];
@@ -167,17 +170,17 @@ public class ArgumentParser
         Console.WriteLine("""
 Usage: wpch [options]
 Options:
-  -l, --list <path>      Path to wallpapers list file
+  -f, --file <path>      Path to wallpapers list file
   -i, --interval <time>  Interval (e.g. 10s, 5m, 1h)
       --include <text>   Filter wallpapers including comma separated substring
       --exclude <text>   Filter wallpapers excluding comma separated substring
-  -f <text>              Filter wallpapers by comma separated substrings
+  -F <text>              Filter wallpapers by comma separated substrings
                            prefix '-' to exclude
-  -v, --verbose          Show download and selection details
+  -v, --verbose          Print download and selection details
   -t, --title            Print selected wallpaper name
-  -h, --help             Show help
-  -c, --count            Show number of wallpapers matching filter
-  -L, --list-all         List all wallpapers matching filter
+  -h, --help             Print help
+  -c, --count            Print counts
+  -l, --list             List all wallpapers matching filter
   -s, --shuffle          Cycle through wallpapers without repeats
   -S, --seed <n>         Use deterministic random seed
   -d, --dry-run          Show which wallpaper would be selected without downloading
